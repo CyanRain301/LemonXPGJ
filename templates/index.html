@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片管理工具</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container" id="baseContainer">
+        <!-- 标题 -->
+        <h1> 🍋 柠檬的选片工具v0.1</h1>
+
+        <!-- 第一行 输入框 + 导入图片-->
+        <div class="row row-1">
+            <input type="text" id="filePathInput" placeholder="导入图片文件路径">
+            <button class="btn btn-primary" id="importImageBtn">导入图片</button>
+        </div>
+
+        <!-- 第二行 -->
+        <div class="row row-2">
+            <input type="text" id="filePathOutput" placeholder="导出图片文件路径">
+            <button class="btn btn-primary" id="exportSavePhoto">导出已选图片</button>
+            <button class="btn btn-primary" id="exportUnsavePhoto">导出未选图片</button>
+        </div>
+        <!-- 第二点五行 -->
+        <div class="row row-2-5">
+            <button class="btn btn-secondary" id="importSheetBtn">导入选片表</button>
+            <button class="btn btn-secondary" id="exportSheetBtn">导出选片表</button>
+        </div>
+        <!-- 第三行 图片展示区域 -->
+        <div class="row row-3">
+            <div class="image-grid" id="imageGrid">
+                <!-- 图片由 JavaScript 动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        // ============================================
+        // 定义图片栈
+        // ============================================
+        imagesStack = [             /*
+            {
+                filename: filename,
+                cls: 'image-item-save'
+            },..                     */
+        ];
+
+        // 记录工作目录
+        filePath = '';      // 工作目录变量
+        exportPath = '';    // 导出目录变量
+
+        // 导入图片按钮
+        document.getElementById('importImageBtn').addEventListener('click', async function() {
+            filePath = document.getElementById('filePathInput').value;
+            // 避免为空
+            if(filePath === ""){
+                alert("请输入导入图片目录");
+                return
+            }
+            console.log('向后端发送导入图片POST请求', JSON.stringify({path: filePath}));
+            // 向后端发送导入图片POST的请求，并等待回信
+            const response = await fetch('/import-image', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: filePath})
+            });
+            // 打印回信。用data捕获json并转换为对象，含三个属性
+            /*  'status': 'success',
+                'imageList': imageList,
+                'sameNameFile': sameNameFile    */
+            const data = await response.json();
+            console.log('后端返回:', data);
+            // 读取回信
+            if (data.status === 'success') {
+                // 处理imageList回信
+                const imageList = data.imageList;
+                console.log(`获取到 ${imageList.length} 张图片:`, imageList);
+                // 更新图片栈
+                imagesStack = imageList.map(filename => ({
+                    filename: filename,
+                    cls: 'image-item-save'  // 默认状态
+                }));
+                refreshImages();
+                // 处理sameNameFile回信
+                const sameNameFile = data.sameNameFile;
+                if (sameNameFile.length !== 0){
+                    alert(`[!] 在导入文件时遇到了 ${sameNameFile.length}个同名文件，可按下F12查询相关信息`);
+                    console.log(`遇到了 ${sameNameFile.length}个同名文件`, sameNameFile);
+                }
+            } else {
+                console.error('导入失败:', data);
+            }
+        });
+
+        // 导出所选图片按钮
+        document.getElementById('exportSavePhoto').addEventListener('click',async function (){
+            exportPath = document.getElementById('filePathOutput').value;
+            if(exportPath === ""){
+                alert("请输入导出图片目录");
+                return
+            }
+            console.log('向后端发送导出图片POST请求',JSON.stringify({path:exportPath}));
+            // 向后端发送导出图片的POST请求，并等待回信
+            const response = await fetch('/export-image', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    imgStack: imagesStack,
+                    matchCls: 'image-item-save',
+                    imgPath: exportPath,
+                })
+            });
+            const data = await response.json();
+            console.log('后端返回:', data);
+            if(data.sameNameFile.length === 0){
+                alert(`已导出 ${data.exportSuccessFile.length} 张图片。可按下F12查询相关信息`);
+                console.log('已导出 ', data.exportSuccessFile);
+                console.log('导出时遇到了以下同名文件，已逃过: ', data.sameNameFile);
+            }
+            else{
+                alert(`已导出 ${data.exportSuccessFile.length} 张图片，跳过 ${data.sameNameFile.length} 个同名文件，其余文件已导出。可按下F12查询相关信息`);
+                console.log('已导出 ', data.exportSuccessFile);
+                console.log('导出时遇到了以下同名文件，已逃过: ', data.sameNameFile);
+            }
+        });
+
+        // 导出未选图片按钮
+        document.getElementById('exportUnsavePhoto').addEventListener('click',async function (){
+            exportPath = document.getElementById('filePathOutput').value;
+            if(exportPath === ""){
+                alert("请输入导出图片目录");
+                return
+            }
+            console.log('向后端发送导出图片POST请求',JSON.stringify({path:exportPath}));
+            // 向后端发送导出图片的POST请求，并等待回信
+            const response = await fetch('/export-image', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    imgStack: imagesStack,
+                    matchCls: 'image-item-unsave',
+                    imgPath: exportPath,
+                })
+            });
+            const data = await response.json();
+            console.log('后端返回:', data);
+            if(data.sameNameFile.length === 0){
+                alert(`已导出 ${data.exportSuccessFile.length} 张图片`);
+                console.log('已导出 ', data.exportSuccessFile);
+                console.log('导出时遇到了以下同名文件，已逃过: ', data.sameNameFile);
+            }
+            else{
+                alert(`已导出 ${data.exportSuccessFile.length} 张图片，跳过 ${data.sameNameFile.length} 个同名文件，其余文件已导出。可按下F12查询相关信息`);
+                console.log('已导出 ', data.exportSuccessFile);
+                console.log('导出时遇到了以下同名文件，已逃过: ', data.sameNameFile);
+            }
+        });
+
+        // 导入选片表按钮
+        document.getElementById('importSheetBtn').addEventListener('click', function() {
+            console.log('📥 导入选片表');
+
+            // 检查是否有图片
+            if (!imagesStack || imagesStack.length === 0) {
+                alert('⚠️ 请先导入图片！');
+                return;
+            }
+
+            // 创建隐藏的文件输入框
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.txt';
+            fileInput.style.display = 'none';
+            document.body.appendChild(fileInput);
+
+            fileInput.click();
+
+            fileInput.addEventListener('change', async function(e) {
+                const file = e.target.files[0];
+                if (!file) {
+                    document.body.removeChild(fileInput);
+                    return;
+                }
+
+                // 检查文件类型
+                if (!file.name.endsWith('.txt')) {
+                    alert('⚠️ 请选择 .txt 文件！');
+                    document.body.removeChild(fileInput);
+                    return;
+                }
+
+                try {
+                    const text = await file.text();
+                    console.log('📄 选片表内容:\n', text);
+
+                    // 解析选片表
+                    const lines = text.split('\n');
+                    const statusMap = {};
+                    let inDataSection = false;
+                    let parseErrors = [];
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+
+                        // 跳过空行
+                        if (!line) continue;
+
+                        // 检测开始标记（不区分大小写）
+                        if (line.toUpperCase().includes('[LEMON\'S PHOTO SELECT TOOL]'.toUpperCase())) {
+                            inDataSection = true;
+                            continue;
+                        }
+
+                        // 检测结束标记
+                        if (line.includes('[END]')) {
+                            break;
+                        }
+
+                        // 只处理数据段内的行
+                        if (!inDataSection) continue;
+
+                        // 解析 "filename\t\tstatus" 格式（支持多个tab或空格）
+                        const parts = line.split(/\t+/).filter(p => p.trim() !== '');
+                        if (parts.length >= 2) {
+                            const filename = parts[0].trim();
+                            const status = parts[1].trim().toLowerCase();
+
+                            // 验证状态是否合法
+                            if (status === 'save' || status === 'unsave') {
+                                statusMap[filename] = status;
+                            } else {
+                                parseErrors.push(`第 ${i+1} 行: "${line}" → 状态 "${status}" 无效`);
+                            }
+                        } else if (parts.length === 1) {
+                            // 可能只有文件名没有状态
+                            parseErrors.push(`第 ${i+1} 行: "${line}" → 缺少状态标记`);
+                        }
+                    }
+
+                    console.log('📊 解析到的状态映射:', statusMap);
+
+                    // 如果有解析错误，询问是否继续
+                    if (parseErrors.length > 0) {
+                        const errorMsg = '⚠️ 解析选片表时发现以下问题：\n\n' +
+                                         parseErrors.join('\n') +
+                                         '\n\n是否继续导入有效数据？';
+                        if (!confirm(errorMsg)) {
+                            document.body.removeChild(fileInput);
+                            return;
+                        }
+                    }
+
+                    // 如果没有解析到任何数据
+                    if (Object.keys(statusMap).length === 0) {
+                        alert('⚠️ 未能解析到任何有效数据，请检查选片表格式！');
+                        document.body.removeChild(fileInput);
+                        return;
+                    }
+
+                    // 匹配并更新图片栈
+                    let matchedCount = 0;
+                    let unmatchedFiles = [];
+
+                    for (let img of imagesStack) {
+                        const filename = img.filename;
+                        if (statusMap[filename]) {
+                            const status = statusMap[filename];
+                            const cls = status === 'save' ? 'image-item-save' : 'image-item-unsave';
+
+                            // 更新数据
+                            img.cls = cls;
+                            matchedCount++;
+                            console.log(`✅ 匹配: ${filename} → ${status}`);
+                        } else {
+                            unmatchedFiles.push(filename);
+                        }
+                    }
+
+                    console.log(`✅ 导入完成，共匹配 ${matchedCount} 张图片`);
+                    if (unmatchedFiles.length > 0) {
+                        console.log(`⚠️ 未匹配的图片: ${unmatchedFiles.join(', ')}`);
+                    }
+
+                    // 刷新界面
+                    refreshImages();
+
+                    // 显示结果
+                    let message = `✅ 导入成功！\n\n`;
+                    message += `匹配图片: ${matchedCount} 张\n`;
+                    message += `未匹配: ${unmatchedFiles.length} 张\n`;
+                    if (unmatchedFiles.length > 0 && unmatchedFiles.length <= 5) {
+                        message += `\n未匹配的图片:\n${unmatchedFiles.join('\n')}`;
+                    }
+                    alert(message);
+
+                } catch (error) {
+                    console.error('❌ 导入失败:', error);
+                    alert('❌ 导入失败: ' + error.message);
+                } finally {
+                    // 清理
+                    document.body.removeChild(fileInput);
+                }
+            });
+        });
+
+        // 导出选片表按钮
+        document.getElementById('exportSheetBtn').addEventListener('click', async function() {
+            console.log('向后端发送POST请求 export-sheet');
+
+            try {
+                const response = await fetch('/export-sheet', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        imgStack: imagesStack,
+                        imgPath: filePath,
+                    })
+                });
+
+                // 获取文件内容（作为blob）
+                const blob = await response.blob();
+
+                // 创建下载链接
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // 加入时间戳
+                const timestamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 14);
+                a.download = `选片表_${timestamp}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                // 释放内存
+                URL.revokeObjectURL(url);
+
+                console.log('选片表导出成功');
+            } catch (error) {
+                console.error('导出失败:', error);
+                alert('导出失败: ' + error.message);
+            }
+        });
+
+        // 实现右键选片逻辑
+        let rightPressTimer = null;
+        let isRightPressed = false;
+        let targetStatus = null;
+        let isFirstFlip = true;
+        let clickCd = 100;
+
+        document.getElementById('imageGrid').addEventListener('mousedown', function(e) {
+            if (e.button === 0) {
+                // 左键点击
+                console.log('左键点击');
+                clearTimeout(rightPressTimer);
+                isRightPressed = false;
+                targetStatus = null;
+                isFirstFlip = true;
+
+                if (e.target.closest('.image-item-save img')) {
+                    const img = e.target.closest('.image-item-save img')
+                    const alt = img.getAttribute('alt');
+                    console.log('🖼️ 点击了图片:', alt, '放大图片');
+                    updateImageStatus(alt,'large');
+                }
+            } else if (e.button === 2) {
+                // 右键按下
+                console.log('右键按下');
+                isRightPressed = true;
+                isFirstFlip = true;
+                targetStatus = null;
+                handleImageFlipAtCursor();
+            }
+        });
+
+        document.getElementById('imageGrid').addEventListener('mouseup', function(e) {
+            console.log('按键松开');
+            if (e.target.closest('.image-item-large img')) {
+                const img = e.target.closest('.image-item-large img')
+                const alt = img.getAttribute('alt');
+                console.log('🖼️ 松开了图片:', alt, '还原图片');
+                updateImageStatus(alt,'save');
+            }
+        });
+
+        // 鼠标移动翻转
+        document.getElementById('imageGrid').addEventListener('mousemove', function(e) {
+            if (!isRightPressed) return;
+            handleImageFlipAtCursor();
+        });
+
+        // 鼠标释放
+        document.addEventListener('mouseup', function(e) {
+            if (e.button === 2) {
+                console.log('右键释放，长按结束');
+                isRightPressed = false;
+                clearTimeout(rightPressTimer);
+                targetStatus = null;
+                isFirstFlip = true;
+            }
+        });
+
+        // 阻止右键菜单
+        document.getElementById('imageGrid').addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+
+        // ===== 抽取公共函数：处理当前鼠标位置下的图片翻转 =====
+        function handleImageFlipAtCursor() {
+        // 获取当前鼠标位置下的元素
+        const hoveredElement = document.elementFromPoint(
+            window.event ? window.event.clientX : 0,
+            window.event ? window.event.clientY : 0
+        );
+
+        if (!hoveredElement) return;
+
+        // 检查鼠标是否在图片网格内
+        const grid = document.getElementById('imageGrid');
+        if (!grid.contains(hoveredElement)) return;
+
+        // 找到鼠标下的具体图片项
+        const item = hoveredElement.closest('.image-item-save, .image-item-unsave');
+        if (!item) return;
+
+        const img = item.querySelector('img');
+        if (!img) return;
+
+        const alt = img.getAttribute('alt');
+
+        // 检查冷却
+        const now = Date.now();
+        const lastFlip = parseInt(item.dataset.flipped) || 0;
+        if (now - lastFlip < clickCd) return;
+
+        // 判断当前状态
+        let currentStatus = null;
+        if (item.classList.contains('image-item-save')) {
+            currentStatus = 'save';
+        } else if (item.classList.contains('image-item-unsave')) {
+            currentStatus = 'unsave';
+        } else {
+            return;
+        }
+
+        // 第一次翻转：确定目标状态
+        if (isFirstFlip) {
+            targetStatus = currentStatus === 'save' ? 'unsave' : 'save';
+            isFirstFlip = false;
+            console.log(`🎯 目标状态确定为: ${targetStatus}`);
+
+            console.log(`🔄 翻转图片: ${alt} → ${targetStatus}`);
+            updateImageStatus(alt, targetStatus);
+            item.dataset.flipped = now;
+            return;
+        }
+
+        // 后续：只翻转当前悬停的图片
+        if (currentStatus !== targetStatus) {
+            console.log(`🔄 翻转图片: ${alt} → ${targetStatus}`);
+            updateImageStatus(alt, targetStatus);
+            item.dataset.flipped = now;
+        } else {
+            console.log(`⏭️ 图片 ${alt} 已是 ${targetStatus}，跳过`);
+        }
+    }
+
+        // 阻止右键菜单
+        document.getElementById('baseContainer').addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+
+
+
+        // 这个函数用于刷新整个页面内的图片
+        function refreshImages() {
+            const grid = document.getElementById('imageGrid');
+            if (imagesStack.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📂</div>
+                        <div class="empty-text">暂无图片</div>
+                        <div class="empty-sub">请点击"导入图片"添加图片</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // 生成图片 HTML
+            grid.innerHTML = imagesStack.map(img => `
+                <div class="${img.cls}">
+                    <img src="/pics/${img.filename}" alt="${img.filename}" loading="lazy">
+                    <div class="image-name">${img.filename}</div>
+                </div>
+            `).join('');
+        }
+
+        // 这个函数用于更新某个图片的状态
+        function updateImageStatus(filename, newStatus) {
+            // 1. 更新数据
+            const image = imagesStack.find(img => img.filename === filename);
+            if (!image) {
+                console.warn(`⚠️ 未找到图片: ${filename}`);
+                return false;
+            }
+
+            // 2. 验证状态（支持三种状态）
+            const validStatuses = ['save', 'unsave', 'large'];
+            if (!validStatuses.includes(newStatus)) {
+                console.error(`❌ 无效状态: ${newStatus}，请使用 'save', 'unsave' 或 'large'`);
+                return false;
+            }
+
+            // 3. 更新数据
+            image.cls = `image-item-${newStatus}`;
+
+            // 4. 更新 DOM
+            const grid = document.getElementById('imageGrid');
+            const items = grid.querySelectorAll('.image-item-save, .image-item-unsave, .image-item-large');
+
+            for (let item of items) {
+                const img = item.querySelector('img');
+                if (img && img.getAttribute('alt') === filename) {
+                    item.className = `image-item-${newStatus}`;
+                    console.log(`✅ 图片 ${filename} 状态已更新为: ${newStatus}`);
+                    break;
+                }
+            }
+            return true;
+        }
+
+        refreshImages();
+    </script>
+</body>
+</html>
