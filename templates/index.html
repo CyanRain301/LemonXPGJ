@@ -27,6 +27,8 @@
         <div class="row row-2-5">
             <button class="btn btn-secondary" id="importSheetBtn">导入选片表</button>
             <button class="btn btn-secondary" id="exportSheetBtn">导出选片表</button>
+            <button class="btn btn-secondary" id="allSave">全部选中</button>
+            <button class="btn btn-secondary" id="allUnsave">全部未选</button>
         </div>
         <!-- 第三行 图片展示区域 -->
         <div class="row row-3">
@@ -47,6 +49,23 @@
                 cls: 'image-item-save'
             },..                     */
         ];
+        // 全部设为已保存
+        document.getElementById('allSave').addEventListener('click', function() {
+            // 使 imagesStack 中所有元素的 cls 项都为 image-item-save
+            for (let img of imagesStack) {
+                updateImageStatus(img.filename,'save')
+            }
+            console.log('✅ 所有图片已设为已保存');
+        });
+
+        // 全部设为未保存
+        document.getElementById('allUnsave').addEventListener('click', function() {
+            // 使 imagesStack 中所有元素的 cls 项都为 image-item-unsave
+            for (let img of imagesStack) {
+                updateImageStatus(img.filename,'unsave')
+            }
+            console.log('✅ 所有图片已设为未保存');
+        });
 
         // 记录工作目录
         filePath = '';      // 工作目录变量

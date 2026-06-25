@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import atexit
 from datetime import datetime
+import exifread
 
 # 创建工作目录
 PICS_DIR = Path(__file__).parent / 'pics'
@@ -66,6 +67,7 @@ def importImage():
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(file, dest)
             print(f" 已拷贝: {file.name}")
+        # 如果导入的图片类型是RAW类型
         elif file.suffix.lower() in RAW_EXTENSIONS:
             temp_jpg_name = file.name + '_RAWtemp.jpg'
             # 判断同名文件
@@ -74,9 +76,11 @@ def importImage():
                 print(f"已忽略同名文件: {file.name}，位于子目录{str(rel_path)}")
                 sameNameFile.append({'fileName': file.name, 'relativePath': str(rel_path)})
                 continue
-            if convert_raw_to_jpg(file,TEMP_DIR / temp_jpg_name):
+            # 通过判断。先将RAW拷贝到TEMP_DIR
+            shutil.copy2(file, TEMP_DIR / file.name)
+            # 执行转换并拷贝到PICS_DIR目录
+            if convert_raw_to_jpg(file,PICS_DIR / temp_jpg_name):
                 imageList.append(temp_jpg_name)
-                shutil.copy2(TEMP_DIR / temp_jpg_name, PICS_DIR / temp_jpg_name)
                 print(f"已转换拷贝RAW文件 {file.name} ")
         else: print(f"转换拷贝RAW文件 {file.name} 时出错")
 
@@ -117,7 +121,7 @@ def exportImage():
                 continue
             # 判断文件是否是RAW文件的缓存文件
             if '_RAWtemp' in filename:
-                filename = filename.replace('_RAWtemp.jpg', '.raw')
+                filename = filename.replace('_RAWtemp.jpg', '')
                 copyFile = TEMP_DIR / filename
             else:
                 copyFile = PICS_DIR / filename
@@ -126,6 +130,7 @@ def exportImage():
                 print(f'已跳过同名文件: {filename}')
                 sameNameFile.append({'fileName': filename})
                 continue
+            print(f"尝试拷贝: {copyFile}")
             shutil.copy2(copyFile, imgPath / filename)
             exportSuccessFile.append(filename)
         print(f'已在目录{imgPath}下导出 {len(exportSuccessFile)} 张图片')
@@ -215,35 +220,62 @@ def cleanup_pics():
 
 atexit.register(cleanup_pics)
 
+
 def convert_raw_to_jpg(raw_path, jpg_path, quality=95):
     """
-    将RAW文件转换为JPG
-    raw_path: RAW文件路径
-    jpg_path: 输出JPG路径
-    quality: JPG质量 1-100
+    将RAW文件转换为JPG，使用 exifread 解析方向
     """
     try:
-        # 读取RAW文件
+        # 1. 使用 exifread 读取方向信息
+        with open(raw_path, 'rb') as f:
+            tags = exifread.process_file(f, details=False)
+
+        # 获取方向标签 (EXIF Tag 0x0112)
+        orientation_value = 1  # 默认正常方向
+        if 'Image Orientation' in tags:
+            orientation_value = tags['Image Orientation'].values[0]
+        elif 'EXIF Orientation' in tags:
+            orientation_value = tags['EXIF Orientation'].values[0]
+
+        # 2. 将EXIF方向转换为 rawpy user_flip 参数
+        # 参考：https://www.exif.org/Exif2-2.PDF 第24页
+        # 1 = 正常, 2 = 水平翻转, 3 = 旋转180°, 4 = 垂直翻转
+        # 5 = 顺时针90°+翻转, 6 = 顺时针90°, 7 = 逆时针90°+翻转, 8 = 逆时针90°
+        user_flip_map = {
+            1: 0,  # 正常
+            2: 1,  # 水平翻转
+            3: 3,  # 旋转180°
+            4: 2,  # 垂直翻转（rawpy可能不支持，用水平翻转代替）
+            5: 4,  # 顺时针90°+翻转
+            6: 6,  # 顺时针90°
+            7: 7,  # 逆时针90°+翻转
+            8: 5  # 逆时针90°
+        }
+        user_flip = user_flip_map.get(orientation_value, 0)
+
+        print(f" EXIF方向: {orientation_value} → user_flip: {user_flip}")
+
+        # 3. 读取并转换RAW
         with rawpy.imread(str(raw_path)) as raw:
-            # 处理RAW数据，获取RGB图像
-            # 使用 demosaic 算法，保留更多细节
             rgb = raw.postprocess(
-                use_camera_wb=True,      # 使用相机白平衡
-                output_bps=8,             # 8位输出
-                user_flip=0,              # 不翻转
-                gamma=(2.222, 4.5),       # sRGB gamma
-                no_auto_bright=False,    # 自动亮度调整
+                use_camera_wb=True,
+                output_bps=8,
+                user_flip=user_flip,
+                gamma=(2.222, 4.5),
+                no_auto_bright=False,
                 output_color=rawpy.ColorSpace.sRGB
             )
-            # 保存为JPG
+
             imageio.imwrite(str(jpg_path), rgb, quality=quality)
             return True
+
     except Exception as e:
-        print(f"RAW转换失败 {raw_path.name}: {e}")
+        print(f"❌ RAW转换失败 {raw_path.name}: {e}")
         return False
+
 
 # 启动服务器
 if __name__ == '__main__':
     # 允许所有IP访问
     print(f"Lemon的选片工具启动")
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
