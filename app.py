@@ -2,6 +2,8 @@ from email import message
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file
 from io import BytesIO
 import os
+import rawpy
+import imageio
 from pathlib import Path
 import shutil
 import atexit
@@ -10,6 +12,10 @@ from datetime import datetime
 # 创建工作目录
 PICS_DIR = Path(__file__).parent / 'pics'
 PICS_DIR.mkdir(exist_ok=True)
+TEMP_DIR = Path(__file__).parent / 'temp'
+TEMP_DIR.mkdir(exist_ok=True)
+RAW_EXTENSIONS = {'.arw', '.cr3', '.cr2', '.nef', '.raf', '.orf', '.dng', '.rw2', '.pef'}
+
 
 # 创建Flask应用实例
 app = Flask(__name__)
@@ -26,50 +32,67 @@ def index():
 # 路由：处理导入图片按钮点击的POST请求
 @app.route('/import-image', methods=['POST'])
 def importImage():
-    if request.is_json:
-        data = request.get_json()  # 获取JSON数据
-        print(f"收到导入图片请求: {data.get('path')}")
-        # 获取导入图片路径
-        current_dir = Path(data.get('path'))
-        imageList = []
-        #记录同名文件列表与相应的目录位置
-        sameNameFile = []
-        # 遍历目录及子目录下所有文件
-        for file in current_dir.rglob('*'):
-            #判断文件是不是图片文件
-            if file.suffix.lower() in ('.jpg', '.jpeg', '.png'):
-                # 判断同名文件
-                if (file.name in imageList):
-                    rel_path = file.relative_to(current_dir)
-                    print(f"已忽略同名文件: {file.name}，位于子目录{str(rel_path)}")
-                    sameNameFile.append({'fileName': file.name, 'relativePath': str(rel_path)})
-                    continue
-                # 将file名记录在imageList中
-                imageList.append(file.name)
-                # 拷贝到 pics, 转换为扁平目录
-                dest = PICS_DIR / file.name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(file, dest)
-                print(f" 已拷贝: {file.name}")
-
-        # 按字母顺序排序（）
-        imageList.sort()
-
-        # 返回响应
-        reply = {
-            'status': 'success',
-            'imageList': imageList,
-            'sameNameFile': sameNameFile
-        }
-        print('发送回信' + str(reply))
-        return jsonify(reply)
-    else:
+    # 处理前端来信
+    if not request.is_json:
         print(f"接收数据错误，非JSON格式")
         reply = {
             'status': 'error',
             'imageList': str()
         }
         return jsonify(reply), 400
+    # 来信合法 获取JSON数据 只有 path: filePath 参数
+    data = request.get_json()
+    print(f"收到导入图片请求: {data.get('path')}")
+    current_dir = Path(data.get('path'))
+    imageList = []
+    sameNameFile = []
+
+    # 该代码块作用是遍历目录及子目录下所有的图片文件
+    # 如果是普通图片文件，则直接拷贝到缓存目录并记录在表
+    # 如果是RAW图片文件，则转换为jpg,再拷贝到缓存目录并记录在表
+    for file in current_dir.rglob('*'):
+        #判断文件是不是图片文件
+        if file.suffix.lower() in ('.jpg', '.jpeg', '.png'):
+            # 判断同名文件
+            if (file.name in imageList):
+                rel_path = file.relative_to(current_dir)
+                print(f"已忽略同名文件: {file.name}，位于子目录{str(rel_path)}")
+                sameNameFile.append({'fileName': file.name, 'relativePath': str(rel_path)})
+                continue
+            # 将file名记录在imageList中
+            imageList.append(file.name)
+            # 拷贝到 pics, 转换为扁平目录
+            dest = PICS_DIR / file.name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, dest)
+            print(f" 已拷贝: {file.name}")
+        elif file.suffix.lower() in RAW_EXTENSIONS:
+            temp_jpg_name = file.name + '_RAWtemp.jpg'
+            # 判断同名文件
+            if temp_jpg_name in imageList:
+                rel_path = file.relative_to(current_dir)
+                print(f"已忽略同名文件: {file.name}，位于子目录{str(rel_path)}")
+                sameNameFile.append({'fileName': file.name, 'relativePath': str(rel_path)})
+                continue
+            if convert_raw_to_jpg(file,TEMP_DIR / temp_jpg_name):
+                imageList.append(temp_jpg_name)
+                shutil.copy2(TEMP_DIR / temp_jpg_name, PICS_DIR / temp_jpg_name)
+                print(f"已转换拷贝RAW文件 {file.name} ")
+        else: print(f"转换拷贝RAW文件 {file.name} 时出错")
+
+    # 按字母顺序排序（）
+    imageList.sort()
+
+    # 返回响应
+    reply = {
+        'status': 'success',
+        'imageList': imageList,
+        'sameNameFile': sameNameFile
+    }
+    print('发送回信' + str(reply))
+    return jsonify(reply)
+
+
 
 #路由：处理前端发送的导出图片POST请求
 @app.route('/export-image', methods=['POST'])
@@ -89,15 +112,22 @@ def exportImage():
         for img in img_stack:
             filename = img.get('filename', 'unknown')
             cls = img.get('cls', 'unknown')
-            for file in PICS_DIR.iterdir():
-                if file.name == filename and cls == matchCls:
-                    # 检测目标目录是否有同名文件
-                    if file.name not in destFile:
-                        shutil.copy2(file, imgPath / filename)
-                        exportSuccessFile.append(file.name)
-                    else:
-                        print(f'已跳过同名文件: {filename}')
-                        sameNameFile.append({'fileName': file.name})
+            #判断文件是否符合matchCls
+            if not cls == matchCls:
+                continue
+            # 判断文件是否是RAW文件的缓存文件
+            if '_RAWtemp' in filename:
+                filename = filename.replace('_RAWtemp.jpg', '.raw')
+                copyFile = TEMP_DIR / filename
+            else:
+                copyFile = PICS_DIR / filename
+            #判断目标目录下是否已存在同名文件
+            if filename in destFile:
+                print(f'已跳过同名文件: {filename}')
+                sameNameFile.append({'fileName': filename})
+                continue
+            shutil.copy2(copyFile, imgPath / filename)
+            exportSuccessFile.append(filename)
         print(f'已在目录{imgPath}下导出 {len(exportSuccessFile)} 张图片')
         reply = {
             'status': 'success',
@@ -177,6 +207,33 @@ def cleanup_pics():
             print(f"清理失败: {e}")
 
 atexit.register(cleanup_pics)
+
+def convert_raw_to_jpg(raw_path, jpg_path, quality=95):
+    """
+    将RAW文件转换为JPG
+    raw_path: RAW文件路径
+    jpg_path: 输出JPG路径
+    quality: JPG质量 1-100
+    """
+    try:
+        # 读取RAW文件
+        with rawpy.imread(str(raw_path)) as raw:
+            # 处理RAW数据，获取RGB图像
+            # 使用 demosaic 算法，保留更多细节
+            rgb = raw.postprocess(
+                use_camera_wb=True,      # 使用相机白平衡
+                output_bps=8,             # 8位输出
+                user_flip=0,              # 不翻转
+                gamma=(2.222, 4.5),       # sRGB gamma
+                no_auto_bright=False,    # 自动亮度调整
+                output_color=rawpy.ColorSpace.sRGB
+            )
+            # 保存为JPG
+            imageio.imwrite(str(jpg_path), rgb, quality=quality)
+            return True
+    except Exception as e:
+        print(f"RAW转换失败 {raw_path.name}: {e}")
+        return False
 
 # 启动服务器
 if __name__ == '__main__':
