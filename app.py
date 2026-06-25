@@ -237,10 +237,6 @@ def convert_raw_to_jpg(raw_path, jpg_path, quality=95):
         elif 'EXIF Orientation' in tags:
             orientation_value = tags['EXIF Orientation'].values[0]
 
-        # 2. 将EXIF方向转换为 rawpy user_flip 参数
-        # 参考：https://www.exif.org/Exif2-2.PDF 第24页
-        # 1 = 正常, 2 = 水平翻转, 3 = 旋转180°, 4 = 垂直翻转
-        # 5 = 顺时针90°+翻转, 6 = 顺时针90°, 7 = 逆时针90°+翻转, 8 = 逆时针90°
         user_flip_map = {
             1: 0,  # 正常
             2: 1,  # 水平翻转
