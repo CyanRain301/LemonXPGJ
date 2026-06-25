@@ -15,7 +15,7 @@ PICS_DIR.mkdir(exist_ok=True)
 TEMP_DIR = Path(__file__).parent / 'temp'
 TEMP_DIR.mkdir(exist_ok=True)
 RAW_EXTENSIONS = {'.arw', '.cr3', '.cr2', '.nef', '.raf', '.orf', '.dng', '.rw2', '.pef'}
-
+IMG_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
 
 # 创建Flask应用实例
 app = Flask(__name__)
@@ -52,7 +52,7 @@ def importImage():
     # 如果是RAW图片文件，则转换为jpg,再拷贝到缓存目录并记录在表
     for file in current_dir.rglob('*'):
         #判断文件是不是图片文件
-        if file.suffix.lower() in ('.jpg', '.jpeg', '.png'):
+        if file.suffix.lower() in IMG_EXTENSIONS:
             # 判断同名文件
             if (file.name in imageList):
                 rel_path = file.relative_to(current_dir)
@@ -192,17 +192,24 @@ def exportSheet():
 
 def cleanup_pics():
     """程序退出时删除 pics 目录下的图片文件"""
+    deleted_count = 0
     if PICS_DIR.exists():
         try:
-            image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-            deleted_count = 0
-
             for file in PICS_DIR.iterdir():
-                if file.is_file() and file.suffix.lower() in image_extensions:
+                if file.is_file() and file.suffix.lower() in IMG_EXTENSIONS:
                     file.unlink()
                     deleted_count += 1
-
             print(f"已删除 {deleted_count} 个图片文件")
+        except Exception as e:
+            print(f"清理失败: {e}")
+    deleted_count = 0
+    if TEMP_DIR.exists():
+        try:
+            for file in TEMP_DIR.iterdir():
+                if file.is_file() and file.suffix.lower() in IMG_EXTENSIONS:
+                    file.unlink()
+                    deleted_count += 1
+            print(f"已删除 {deleted_count} 个RAW缓存文件")
         except Exception as e:
             print(f"清理失败: {e}")
 
