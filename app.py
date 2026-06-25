@@ -246,4 +246,4 @@ def convert_raw_to_jpg(raw_path, jpg_path, quality=95):
 if __name__ == '__main__':
     # 允许所有IP访问
     print(f"Lemon的选片工具启动")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
