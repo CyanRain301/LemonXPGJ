@@ -17,5 +17,4 @@ rawpy==0.27.0
 requests==2.34.2
 urllib3==2.7.0
 Werkzeug==3.1.8
-
-exifread
+exifread==3.5.1
