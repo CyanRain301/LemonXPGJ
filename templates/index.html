@@ -39,6 +39,48 @@
     </div>
 
     <script>
+        // ============================================
+        // 图片类定义
+        // ============================================
+        class imageItem {
+            constructor(filename, cls = 'image-item-save') {
+                this.filename = filename;
+                this.cls = cls;
+            }
+            updateImageStatus(newStatus) {
+                // 验证输入参数
+                const validStatuses = ['save', 'unsave', 'large'];
+                if (!validStatuses.includes(newStatus)) {
+                    console.error(` 无效状态: ${newStatus}，请使用 'save', 'unsave' 或 'large'`);
+                    return false;
+                }
+                // 更新状态，跳过重复的状态
+                const targetCls = `image-item-${newStatus}`;
+                if(this.cls === targetCls){
+                    console.log(` 图片 ${this.filename} 已经是状态: ${targetCls}`);
+                    return true
+                }
+                this.cls = targetCls;
+                this._updateDOM(newStatus);
+                console.log(` 图片 ${this.filename} 状态已更新为: ${targetCls}`);
+                return true;
+            }
+            // 更新 DOM 元素 私有
+            _updateDOM(newStatus) {
+                const grid = document.getElementById('imageGrid');
+                if (!grid) return;
+
+                const items = grid.querySelectorAll('.image-item-save, .image-item-unsave, .image-item-large');
+                for (let item of items) {
+                    const img = item.querySelector('img');
+                    if (img && img.getAttribute('alt') === this.filename) {
+                        item.className = `image-item-${newStatus}`;
+                        break;
+                    }
+                }
+            }
+            // 类定义结束
+        }
 
         // ============================================
         // 定义图片栈
@@ -53,18 +95,18 @@
         document.getElementById('allSave').addEventListener('click', function() {
             // 使 imagesStack 中所有元素的 cls 项都为 image-item-save
             for (let img of imagesStack) {
-                updateImageStatus(img.filename,'save')
+                img.updateImageStatus('save')
             }
-            console.log('✅ 所有图片已设为已保存');
+            console.log('所有图片已设为已保存');
         });
 
         // 全部设为未保存
         document.getElementById('allUnsave').addEventListener('click', function() {
             // 使 imagesStack 中所有元素的 cls 项都为 image-item-unsave
             for (let img of imagesStack) {
-                updateImageStatus(img.filename,'unsave')
+                img.updateImageStatus('unsave')
             }
-            console.log('✅ 所有图片已设为未保存');
+            console.log('所有图片已设为未保存');
         });
 
         // 记录工作目录
@@ -97,10 +139,9 @@
                 const imageList = data.imageList;
                 console.log(`获取到 ${imageList.length} 张图片:`, imageList);
                 // 更新图片栈
-                imagesStack = imageList.map(filename => ({
-                    filename: filename,
-                    cls: 'image-item-save'  // 默认状态
-                }));
+                for(let img of imageList){
+                    imagesStack.push(new imageItem(img, 'image-item-save'))
+                }
                 refreshImages();
                 // 处理sameNameFile回信
                 const sameNameFile = data.sameNameFile;
@@ -494,7 +535,6 @@
         });
 
 
-
         // 这个函数用于刷新整个页面内的图片
         function refreshImages() {
             const grid = document.getElementById('imageGrid');
@@ -518,38 +558,16 @@
             `).join('');
         }
 
-        // 这个函数用于更新某个图片的状态
+        // 这个函数用于更新某个图片的状态，按照filename进行搜索并更新，而非对对象调用方法。
         function updateImageStatus(filename, newStatus) {
-            // 1. 更新数据
-            const image = imagesStack.find(img => img.filename === filename);
-            if (!image) {
-                console.warn(`⚠️ 未找到图片: ${filename}`);
-                return false;
-            }
-
-            // 2. 验证状态（支持三种状态）
-            const validStatuses = ['save', 'unsave', 'large'];
-            if (!validStatuses.includes(newStatus)) {
-                console.error(`❌ 无效状态: ${newStatus}，请使用 'save', 'unsave' 或 'large'`);
-                return false;
-            }
-
-            // 3. 更新数据
-            image.cls = `image-item-${newStatus}`;
-
-            // 4. 更新 DOM
-            const grid = document.getElementById('imageGrid');
-            const items = grid.querySelectorAll('.image-item-save, .image-item-unsave, .image-item-large');
-
-            for (let item of items) {
-                const img = item.querySelector('img');
-                if (img && img.getAttribute('alt') === filename) {
-                    item.className = `image-item-${newStatus}`;
-                    console.log(`✅ 图片 ${filename} 状态已更新为: ${newStatus}`);
-                    break;
+            for(let img of imagesStack){
+                if(img.filename === filename){
+                    img.updateImageStatus(newStatus)
+                    return true
                 }
             }
-            return true;
+            console.log(`在图片栈中找不到名为${filename}的目标`);
+            return false
         }
 
         refreshImages();

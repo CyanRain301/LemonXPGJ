@@ -107,7 +107,15 @@ def exportImage():
         imgPath = Path(data.get('imgPath'))
         matchCls = data.get('matchCls')
         print(f'收到导出图片请求，共 {len(img_stack)} 张图片，目标地址 {imgPath}')
-        #将目标目录下的所有文件名都记录在destFile列表中
+        # 前端传过来的信息如下:
+        '''
+        data = {
+            imgStack: [{filename:'filename', cls:'cls'}...]
+            matchCls: 'image-item-save',
+            imgPath: exportPath,
+        }
+        '''
+        # 将目标目录下的所有文件名都记录在destFile列表中
         destFile = []
         sameNameFile = []
         exportSuccessFile = []
