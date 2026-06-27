@@ -185,7 +185,6 @@ input[type="text"]:hover {
     background: transparent;
     border-radius: 12px;
     padding: 12px 12px 14px;
-    cursor: pointer;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
     border: 2px solid transparent;
     transition: all 0.2s ease;
@@ -284,10 +283,13 @@ input[type="text"]:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 400;
-    transition: color 0.3s ease;
+    transition: all 0.3s ease;
 }
 
-.image-item:hover .image-name {
+.image-name:hover {
+    transform: scale(1.2) translateY(3px);
+    transform-origin: center;
+    cursor: text;
     color: #1a2a3a;
 }
 /* ============================================

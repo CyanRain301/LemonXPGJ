@@ -47,6 +47,7 @@
                 this.filename = filename;
                 this.cls = cls;
             }
+            // 更新图片状态
             updateImageStatus(newStatus) {
                 // 验证输入参数
                 const validStatuses = ['save', 'unsave', 'large'];
@@ -61,23 +62,58 @@
                     return true
                 }
                 this.cls = targetCls;
-                this._updateDOM(newStatus);
+                this._updateDOM();
                 console.log(` 图片 ${this.filename} 状态已更新为: ${targetCls}`);
                 return true;
             }
+            // 更新图片名字
+            async updateImageName(inName) {
+                const { name: oldName, ext: oldExt } = splitFilename(this.filename);
+                const { name: newName, ext: newExt } = splitFilename(inName);
+                console.log(`原名称和后缀: ${oldName}.${oldExt}`)
+                console.log(`传入名称和后缀: ${newName}.${newExt}`)
+                const outName = newName + '.' + oldExt;
+                console.log(` 向后端发送图片更名请求，将 ${this.filename} 更名为 ${outName}`);
+                const response = await fetch('/rename-image', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({oldName: this.filename,newName: outName})
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    this.filename = outName
+                    this._updateDOM(`${oldName}.${oldExt}`);
+                    console.log(` 图片 ${oldName}.${oldExt} 已更名为: ${this.filename}`);
+                    return true;
+                } else {
+                    console.error('重命名图片失败:', data.message);
+                    return false;
+                }
+            }
             // 更新 DOM 元素 私有
-            _updateDOM(newStatus) {
+            _updateDOM(altKey=this.filename) {
                 const grid = document.getElementById('imageGrid');
                 if (!grid) return;
-
                 const items = grid.querySelectorAll('.image-item-save, .image-item-unsave, .image-item-large');
                 for (let item of items) {
                     const img = item.querySelector('img');
-                    if (img && img.getAttribute('alt') === this.filename) {
-                        item.className = `image-item-${newStatus}`;
-                        break;
+                    if (img.getAttribute('alt') === altKey) {
+                        // 更新容器类名
+                        item.className = `${this.cls}`;
+
+                        // 更新图片的 src 和 alt
+                        img.src = `/pics/${this.filename}`;
+                        img.alt = this.filename;
+                        console.log(`图片元素的类名为${item.className}，src为${img.src}，alt为${img.alt}`)
+                        // 更新文件名显示
+                        const nameDiv = item.querySelector('.image-name');
+                        if (nameDiv) {
+                            nameDiv.textContent = this.filename;
+                        }
+                        return true;
                     }
                 }
+                console.log(`在图片网格中找不到alt为${altKey}的元素`);
+                return false;
             }
             // 类定义结束
         }
@@ -568,6 +604,18 @@
             }
             console.log(`在图片栈中找不到名为${filename}的目标`);
             return false
+        }
+
+        // 这个函数用于分离文件名和扩展名
+        function splitFilename(filename) {
+            const lastDot = filename.lastIndexOf('.');
+            if (lastDot === -1) {
+                return { name: filename, ext: '' };
+            }
+            return {
+                name: filename.substring(0, lastDot),
+                ext: filename.substring(lastDot + 1)
+            };
         }
 
         refreshImages();

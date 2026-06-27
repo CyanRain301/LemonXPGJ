@@ -96,8 +96,6 @@ def importImage():
     print('发送回信' + str(reply))
     return jsonify(reply)
 
-
-
 #路由：处理前端发送的导出图片POST请求
 @app.route('/export-image', methods=['POST'])
 def exportImage():
@@ -203,6 +201,36 @@ def exportSheet():
             'message': ''
         }), 400
 
+#路由：处理图片更名的POST请求
+@app.route('/rename-image', methods=['POST'])
+def renameImage():
+    if request.is_json:
+        data = request.get_json()
+        oldName = data.get('oldName')
+        newName = data.get('newName')
+        old_path = PICS_DIR / oldName
+        new_path = PICS_DIR / newName
+
+        # 检查旧文件是否存在
+        if not old_path.exists():
+            return jsonify({'status': 'error', 'message': f'文件 {oldName} 不存在'}), 404
+
+        # 检查新文件名是否已被占用
+        if new_path.exists():
+            return jsonify({'status': 'error', 'message': f'文件 {newName} 已存在'}), 409
+
+        try:
+            old_path.rename(new_path)
+            print(f"✅ 重命名: {oldName} → {newName}")
+            return jsonify({
+                'status': 'success',
+                'message': f'已重命名为 {newName}'
+            })
+        except Exception as e:
+            print(f"❌ 重命名失败: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 def cleanup_pics():
     """程序退出时删除 pics 目录下的图片文件"""
     deleted_count = 0
@@ -228,7 +256,7 @@ def cleanup_pics():
 
 atexit.register(cleanup_pics)
 
-
+# 定义全局函数，将raw图转换为jpg
 def convert_raw_to_jpg(raw_path, jpg_path, quality=95):
     """
     将RAW文件转换为JPG，使用 exifread 解析方向
