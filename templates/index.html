@@ -9,7 +9,7 @@
 <body>
     <div class="container" id="baseContainer">
         <!-- 标题 -->
-        <h1> 🍋 柠檬的选片工具v0.3</h1>
+        <h1> 🍋 柠檬的选片工具v1.0</h1>
 
         <!-- 第一行 输入框 + 导入图片 -->
         <div class="row row-1">
@@ -43,9 +43,12 @@
         // 图片类定义
         // ============================================
         class imageItem {
-            constructor(filename, cls = 'image-item-save') {
-                this.filename = filename;
-                this.cls = cls;
+            constructor(filename, surfacename, isRAW, RAWname, cls = 'image-item-save') {
+                this.filename = filename;           // filename是在PICS中调用的资源的名字
+                this.surfacename = surfacename;     // surfacename是在用户界面中显示的名字
+                this.isRAW = isRAW;                 // 用来标识是否是RAW图片
+                this.RAWname = RAWname;             // RAWname是图片导入时的名字
+                this.cls = cls;                     // Cls用来标识图片的状态
             }
             // 更新图片状态
             updateImageStatus(newStatus) {
@@ -67,52 +70,40 @@
                 return true;
             }
             // 更新图片名字
-            async updateImageName(inName) {
-                const { name: oldName, ext: oldExt } = splitFilename(this.filename);
+            updateImageName(inName) {
+                const { name: oldName, ext: oldExt } = splitFilename(this.RAWname);
                 const { name: newName, ext: newExt } = splitFilename(inName);
                 console.log(`原名称和后缀: ${oldName}.${oldExt}`)
                 console.log(`传入名称和后缀: ${newName}.${newExt}`)
-                const outName = newName + '.' + oldExt;
-                console.log(` 向后端发送图片更名请求，将 ${this.filename} 更名为 ${outName}`);
-                const response = await fetch('/rename-image', {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({oldName: this.filename,newName: outName})
-                });
-                const data = await response.json();
-                if (data.status === 'success') {
-                    this.filename = outName
-                    this._updateDOM(`${oldName}.${oldExt}`);
-                    console.log(` 图片 ${oldName}.${oldExt} 已更名为: ${this.filename}`);
-                    return true;
-                } else {
-                    console.error('重命名图片失败:', data.message);
-                    return false;
-                }
+                this.surfacename = newName + '.' + oldExt;
+                this._updateDOM();
+                console.log(` 图片 ${oldName}.${oldExt} 已更名为: ${this.surfacename}`);
+                return true;
             }
             // 更新 DOM 元素 私有
-            _updateDOM(altKey=this.filename) {
+            _updateDOM() {
                 const grid = document.getElementById('imageGrid');
                 if (!grid) return;
                 const items = grid.querySelectorAll('.image-item-save, .image-item-unsave, .image-item-large');
                 for (let item of items) {
                     const img = item.querySelector('img');
-                    if (img.getAttribute('alt') === altKey) {
+                    if (img.getAttribute('alt') === this.filename) {
                         // 更新容器类名
                         item.className = `${this.cls}`;
-
                         // 更新图片的 src 和 alt
                         img.src = `/pics/${this.filename}`;
                         img.alt = this.filename;
-                        console.log(`图片元素的类名为${item.className}，src为${img.src}，alt为${img.alt}`)
+                        console.log(`图片元素的类名更新为${item.className}，图片名称更新为${this.surfacename}`)
                         // 更新文件名显示
-                        const nameDiv = item.querySelector('.image-name');
-                        if (nameDiv) {
-                            nameDiv.textContent = this.filename;
-                        }
+                        const nameDiv = item.querySelector('.image-name') || item.querySelector('.image-name-changed');
+                        nameDiv.textContent = this.surfacename;
+                        if (this.RAWname !== this.surfacename){
+                            nameDiv.className = 'image-name-changed';
+                        }else{nameDiv.className = 'image-name'}
                         return true;
                     }
                 }
-                console.log(`在图片网格中找不到alt为${altKey}的元素`);
+                console.log(`在图片网格中找不到alt为${this.filename}的元素`);
                 return false;
             }
             // 类定义结束
@@ -123,7 +114,10 @@
         // ============================================
         imagesStack = [             /*
             {
-                filename: filename,
+                filename:temp_jpg_name,
+                surfacename:file.name,
+                isRAW:1,
+                RAWname:file.name,
                 cls: 'image-item-save'
             },..                     */
         ];
@@ -165,7 +159,12 @@
             });
             // 打印回信。用data捕获json并转换为对象，含三个属性
             /*  'status': 'success',
-                'imageList': imageList,
+                'imageList': [{
+                    'filename':temp_jpg_name,
+                    'surfacename':file.name,
+                    'isRAW':1,
+                    'RAWname':file.name,
+                }...],
                 'sameNameFile': sameNameFile    */
             const data = await response.json();
             console.log('后端返回:', data);
@@ -176,7 +175,7 @@
                 console.log(`获取到 ${imageList.length} 张图片:`, imageList);
                 // 更新图片栈
                 for(let img of imageList){
-                    imagesStack.push(new imageItem(img, 'image-item-save'))
+                    imagesStack.push(new imageItem(img.filename, img.surfacename, img.isRAW, img.RAWname))
                 }
                 refreshImages();
                 // 处理sameNameFile回信
@@ -207,7 +206,7 @@
                     imgPath: exportPath,
                 })
             });
-            const data = await response.json();
+            const data = await response.json()
             console.log('后端返回:', data);
             if(data.sameNameFile.length === 0){
                 alert(`已导出 ${data.exportSuccessFile.length} 张图片。可按下F12查询相关信息`);
@@ -291,9 +290,9 @@
 
                     // 解析选片表
                     const lines = text.split('\n');
-                    const statusMap = {};
                     let inDataSection = false;
-                    let parseErrors = [];
+                    let matchedCount = 0;
+                    let unmatchedFiles = [];
 
                     for (let i = 0; i < lines.length; i++) {
                         const line = lines[i].trim();
@@ -317,59 +316,22 @@
 
                         // 解析 "filename\t\tstatus" 格式（支持多个tab或空格）
                         const parts = line.split(/\t+/).filter(p => p.trim() !== '');
-                        if (parts.length >= 2) {
-                            const filename = parts[0].trim();
-                            const status = parts[1].trim().toLowerCase();
-
-                            // 验证状态是否合法
-                            if (status === 'save' || status === 'unsave') {
-                                statusMap[filename] = status;
-                            } else {
-                                parseErrors.push(`第 ${i+1} 行: "${line}" → 状态 "${status}" 无效`);
+                        const filename = parts[0].trim();
+                        const surfacename = parts[1].trim();
+                        const isRAW = parts[2].trim();
+                        const RAWname = parts[3].trim();
+                        const cls = parts[4].trim();
+                        let matchFlag = false;
+                        for(let img of imagesStack){
+                            if(img.filename === filename){
+                                img.updateImageStatus(cls.replace('image-item-',''));
+                                img.updateImageName(surfacename);
+                                matchedCount ++;
+                                matchFlag = true;
+                                break;
                             }
-                        } else if (parts.length === 1) {
-                            // 可能只有文件名没有状态
-                            parseErrors.push(`第 ${i+1} 行: "${line}" → 缺少状态标记`);
                         }
-                    }
-
-                    console.log('📊 解析到的状态映射:', statusMap);
-
-                    // 如果有解析错误，询问是否继续
-                    if (parseErrors.length > 0) {
-                        const errorMsg = '⚠️ 解析选片表时发现以下问题：\n\n' +
-                                         parseErrors.join('\n') +
-                                         '\n\n是否继续导入有效数据？';
-                        if (!confirm(errorMsg)) {
-                            document.body.removeChild(fileInput);
-                            return;
-                        }
-                    }
-
-                    // 如果没有解析到任何数据
-                    if (Object.keys(statusMap).length === 0) {
-                        alert('⚠️ 未能解析到任何有效数据，请检查选片表格式！');
-                        document.body.removeChild(fileInput);
-                        return;
-                    }
-
-                    // 匹配并更新图片栈
-                    let matchedCount = 0;
-                    let unmatchedFiles = [];
-
-                    for (let img of imagesStack) {
-                        const filename = img.filename;
-                        if (statusMap[filename]) {
-                            const status = statusMap[filename];
-                            const cls = status === 'save' ? 'image-item-save' : 'image-item-unsave';
-
-                            // 更新数据
-                            img.cls = cls;
-                            matchedCount++;
-                            console.log(`✅ 匹配: ${filename} → ${status}`);
-                        } else {
-                            unmatchedFiles.push(filename);
-                        }
+                        if(!matchFlag) unmatchedFiles.push(filename);
                     }
 
                     console.log(`✅ 导入完成，共匹配 ${matchedCount} 张图片`);
@@ -408,7 +370,7 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        imgStack: imagesStack,
+                        imagesStack: imagesStack,
                         imgPath: filePath,
                     })
                 });
@@ -501,6 +463,141 @@
             e.preventDefault();
         });
 
+        // 实现点击名字更名逻辑
+        document.getElementById('imageGrid').addEventListener('click', function(e) {
+            const nameDiv = e.target.closest('.image-name') || e.target.closest('.image-name-changed')
+            if (!nameDiv){
+                return
+            }
+
+            // 如果已经在编辑状态，不重复处理
+            if (nameDiv.contentEditable === 'true') return;
+
+            // 保存原始文件名
+            const originalName = nameDiv.textContent;
+            const filename = nameDiv.dataset.filename;
+
+            // 启用编辑
+            nameDiv.contentEditable = 'true';
+            nameDiv.style.backgroundColor = '#f0f4ff';
+            nameDiv.style.border = '';
+            nameDiv.style.borderRadius = '';
+            nameDiv.style.padding = '4px 8px';
+            nameDiv.focus();
+
+            // 选中全部文本
+            const range = document.createRange();
+            range.selectNodeContents(nameDiv);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            // 保存函数
+            function saveEdit() {
+                if (nameDiv.contentEditable !== 'true') return;
+
+                const newName = nameDiv.textContent.trim();
+                nameDiv.contentEditable = 'false';
+                nameDiv.style.backgroundColor = '';
+                nameDiv.style.border = '';
+                nameDiv.style.borderRadius = '';
+                nameDiv.style.padding = '';
+
+                if (newName && newName !== originalName) {
+                    // 找到对应的图片对象并更新
+                    const img = imagesStack.find(img => img.filename === filename);
+                    if (img) {
+                        img.updateImageName(newName);
+                    }
+                }
+            }
+
+            // 按回车保存
+            nameDiv.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveEdit();
+                }
+                if (e.key === 'Escape') {
+                    nameDiv.textContent = originalName;
+                    saveEdit();
+                }
+            }, { once: true });
+
+            // 失焦保存
+            nameDiv.addEventListener('blur', saveEdit, { once: true });
+        });
+
+        // 实现点击鼠标中键更名逻辑
+        document.getElementById('imageGrid').addEventListener('mousedown', function(e) {
+            // 检测中键点击 (button === 1)
+            if (e.button !== 1) return;
+
+            e.preventDefault();  // 阻止中键的自动滚动行为
+
+            const containerDiv = e.target.closest('.image-item-save, .image-item-unsave, .image-item-large');
+            const nameDiv = containerDiv.querySelector('.image-name') || containerDiv.querySelector('.image-name-changed');
+            if (!nameDiv) {
+                return
+            }
+
+            // 如果已经在编辑状态，不重复处理
+            if (nameDiv.contentEditable === 'true') return;
+
+            // 保存原始文件名
+            const originalName = nameDiv.textContent;
+            const filename = nameDiv.dataset.filename;
+
+            // 启用编辑
+            nameDiv.contentEditable = 'true';
+            nameDiv.style.backgroundColor = '#fff3e0';  // 用橙色背景区分中键编辑
+            nameDiv.style.border = '2px solid #ff9800';
+            nameDiv.style.borderRadius = '4px';
+            nameDiv.style.padding = '4px 8px';
+            nameDiv.focus();
+
+            // 选中全部文本
+            const range = document.createRange();
+            range.selectNodeContents(nameDiv);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            // 保存函数
+            function saveEdit() {
+                if (nameDiv.contentEditable !== 'true') return;
+
+                const newName = nameDiv.textContent.trim();
+                nameDiv.contentEditable = 'false';
+                nameDiv.style.backgroundColor = '';
+                nameDiv.style.border = '';
+                nameDiv.style.borderRadius = '';
+                nameDiv.style.padding = '';
+
+                if (newName && newName !== originalName) {
+                    const img = imagesStack.find(img => img.filename === filename);
+                    if (img) {
+                        img.updateImageName(newName);
+                    }
+                }
+            }
+
+            // 按回车保存
+            nameDiv.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveEdit();
+                }
+                if (e.key === 'Escape') {
+                    nameDiv.textContent = originalName;
+                    saveEdit();
+                }
+            }, { once: true });
+
+            // 失焦保存
+            nameDiv.addEventListener('blur', saveEdit, { once: true });
+        });
+
         // ===== 抽取公共函数：处理当前鼠标位置下的图片翻转 =====
         function handleImageFlipAtCursor() {
         // 获取当前鼠标位置下的元素
@@ -589,7 +686,9 @@
             grid.innerHTML = imagesStack.map(img => `
                 <div class="${img.cls}">
                     <img src="/pics/${img.filename}" alt="${img.filename}" loading="lazy">
-                    <div class="image-name">${img.filename}</div>
+                    <div class="image-name-wrapper">
+                        <span class="image-name${img.RAWname === img.surfacename ? '' : '-changed'}" data-filename="${img.filename}">${img.surfacename}</span>
+                    </div>
                 </div>
             `).join('');
         }

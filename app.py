@@ -61,7 +61,12 @@ def importImage():
                 sameNameFile.append({'fileName': file.name, 'relativePath': str(rel_path)})
                 continue
             # 将file名记录在imageList中
-            imageList.append(file.name)
+            imageList.append({
+                'filename':file.name,
+                'surfacename':file.name,
+                'isRAW':0,
+                'RAWname':file.name,
+            })
             # 拷贝到 pics, 转换为扁平目录
             dest = PICS_DIR / file.name
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -80,12 +85,17 @@ def importImage():
             shutil.copy2(file, TEMP_DIR / file.name)
             # 执行转换并拷贝到PICS_DIR目录
             if convert_raw_to_jpg(file,PICS_DIR / temp_jpg_name):
-                imageList.append(temp_jpg_name)
+                imageList.append({
+                    'filename':temp_jpg_name,
+                    'surfacename':file.name,
+                    'isRAW':1,
+                    'RAWname':file.name,
+                })
                 print(f"已转换拷贝RAW文件 {file.name} ")
         else: print(f"转换拷贝RAW文件 {file.name} 时出错")
 
     # 按字母顺序排序（）
-    imageList.sort()
+    imageList.sort(key=lambda x: x['filename'])
 
     # 返回响应
     reply = {
@@ -121,6 +131,7 @@ def exportImage():
             destFile.append(file.name)
         for img in img_stack:
             filename = img.get('filename', 'unknown')
+            outputname = img.get('surfacename','unknown')
             cls = img.get('cls', 'unknown')
             #判断文件是否符合matchCls
             if not cls == matchCls:
@@ -132,12 +143,12 @@ def exportImage():
             else:
                 copyFile = PICS_DIR / filename
             #判断目标目录下是否已存在同名文件
-            if filename in destFile:
-                print(f'已跳过同名文件: {filename}')
-                sameNameFile.append({'fileName': filename})
+            if outputname in destFile:
+                print(f'已跳过同名文件: {outputname}')
+                sameNameFile.append({'fileName': outputname})
                 continue
             print(f"尝试拷贝: {copyFile}")
-            shutil.copy2(copyFile, imgPath / filename)
+            shutil.copy2(copyFile, imgPath / outputname)
             exportSuccessFile.append(filename)
         print(f'已在目录{imgPath}下导出 {len(exportSuccessFile)} 张图片')
         reply = {
@@ -159,21 +170,22 @@ def exportImage():
 def exportSheet():
     if request.is_json:
         data = request.get_json()
-        img_stack = data.get('imgStack', [])    #img_stack是一个列表
+        imagesStack = data.get('imagesStack', [])    #img_stack是一个列表
         imgPath = data.get('imgPath')
-        print(f"收到导出选片表请求，共 {len(img_stack)} 张图片")
+        print(f"收到导出选片表请求，共 {len(imagesStack)} 张图片")
 
         # 生成文本内容
         lines = []
         lines.append("[LEMON's PHOTO SELECT TOOL]")
 
-        for img in img_stack:
+        for img in imagesStack:
             # img是一个只能get的字典类似物
             filename = img.get('filename', 'unknown')
+            surfacename = img.get('surfacename', 'unknown')
+            isRAW = img.get('isRAW', 0)
+            RAWname = img.get('RAWname', 'unknown')
             cls = img.get('cls', 'unknown')
-            # 提取状态（去掉 'image-item-' 前缀）
-            status = cls.replace('image-item-', '') if cls.startswith('image-item-') else cls
-            lines.append(f"{filename}\t\t{status}")
+            lines.append(f"{filename}\t\t{surfacename}\t\t{isRAW}\t\t{RAWname}\t\t{cls}")
 
         # 添加结束位置
         lines.append("[END]")

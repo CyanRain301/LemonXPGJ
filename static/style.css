@@ -254,6 +254,10 @@ input[type="text"]:hover {
     box-shadow: 0 4px 5px rgba(0, 0, 0, 0.2);
 }
 
+.image-item-save:hover .image-name-wrapper:not(:hover) {
+    transform: translateY(4px);
+}
+
 .image-item-unsave:hover img {
     transform: scale(0.82);
     box-shadow: 0 4px 5px rgba(0, 0, 0, 0.2);
@@ -273,7 +277,9 @@ input[type="text"]:hover {
     transform: scale(0.88);
 }
 */
-.image-name {
+.image-name,
+.image-name-changed,
+.image-name-wrapper{
     margin-top: 10px;
     font-size: 13px;
     color: #5a6a7a;
@@ -286,11 +292,18 @@ input[type="text"]:hover {
     transition: all 0.3s ease;
 }
 
-.image-name:hover {
-    transform: scale(1.2) translateY(3px);
+.image-name-changed{
+    color: #ba6e88;
+}
+
+.image-name,
+.image-name-changed:hover {
     transform-origin: center;
     cursor: text;
-    color: #1a2a3a;
+}
+
+.image-name-wrapper:hover {
+    transform: scale(1.15) translateY(4px);
 }
 /* ============================================
    空状态
